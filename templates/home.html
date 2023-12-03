@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Introducing Speech with Charlion: Advanced Text-to-Speech AI</title>
+    <style>
+        body {
+            margin: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            background-color: #f5f5f5;
+            font-family: Arial, sans-serif;
+        }
+        main {
+            max-width: 1500px;
+            width: 100%;
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: space-around;
+        }
+        section {
+            text-align: center;
+            padding: 50px;
+            border-radius: 10px;
+            background-color: #fff;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+            max-width: 1000px;
+            width: 100%;
+            margin: 5px;
+            box-sizing: border-box;
+        }
+        h1 {
+            color: #333;
+        }
+        p {
+            color: #555;
+            line-height: 1.6;
+            margin-bottom: 15px;
+        }
+        ul {
+            list-style: none;
+            padding: 0;
+            margin-top: 0;
+        }
+        li {
+            margin-bottom: 8px;
+        }
+        form {
+            margin-top: 20px;
+        }
+        label, select, textarea {
+            display: block;
+            margin-bottom: 10px;
+        }
+        textarea {
+            width: 100%;
+            box-sizing: border-box;
+        }
+        button {
+            background-color: #4caf50;
+            color: white;
+            padding: 10px 15px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        audio {
+            width: 100%;
+            margin-top: 20px;
+        }
+        div {
+            margin-top: 20px;
+            color: red;
+        }
+    </style>
+</head>
+<body>
+
+    <main>
+        <section>
+            <h1>Introducing Speech with Charlion: Advanced Text-to-Speech AI</h1>
+            <p>Speech with Charlion uses GPT-style models to generate audio from scratch.the initial text prompt is embedded into high-level semantic tokens without the use of phonemes. It can therefore generalize to arbitrary instructions beyond speech that occur in the training data, such as music lyrics, sound effects, or other non-speech sounds.</p>
+            <p>It is not a conventional TTS model, but instead a fully generative text-to-audio model capable of deviating in unexpected ways from any given script. But we are finding more every day. Please let us know if you find patterns that work particularly well.</p>
+    
+            <form method="post" action="{{ url_for('convert_to_speech') }}">
+                <label for="voice">Select Voice:</label>
+                <select name="voice" id="voice">
+                    <option value="v2/en_speaker_0">speaker_0</option>
+                    <option value="v2/en_speaker_1">speaker_1</option>
+                    <option value="v2/en_speaker_2">speaker_2</option>
+                    <option value="v2/en_speaker_3">speaker_3</option>
+                    <option value="v2/en_speaker_4">speaker_4</option>
+                    <option value="v2/en_speaker_5">speaker_5</option>
+                    <option value="v2/en_speaker_6">speaker_6</option>
+                    <option value="v2/en_speaker_7">speaker_7</option>
+                    <option value="v2/en_speaker_8">speaker_8</option>
+                    <option value="v2/en_speaker_9">speaker_9</option>
+                    <!-- Add other voice options here -->
+                </select>
+                <textarea name="text" rows="10" cols="50">{{ request.form.get('text') }}</textarea>
+                <button type="submit">Convert to Speech</button>
+            </form>
+    
+            {% if audio_path %}
+                <br>
+                <audio controls>
+                    <source src="{{ audio_path }}" type="audio/wav">
+                    Your browser does not support the audio element.
+                </audio>
+            {% endif %}
+    
+            {% with messages = get_flashed_messages() %}
+                {% if messages %}
+                    <div>
+                        {% for message in messages %}
+                            <p style="color: red;">{{ message }}</p>
+                        {% endfor %}
+                    </div>
+                {% endif %}
+            {% endwith %}
+    
+            <!-- Add this section for the progress bar -->
+            <section id="progress-section" style="display: none;">
+                <h1>Processing...</h1>
+                <progress id="progress-bar" max="100" value="0"></progress>
+                <p id="progress-status">0%</p>
+            </section>
+        </section>
+    
+        <section>
+            <p>List of some known non-speech sounds:</p>
+            <ul>
+                <li>[laughter]</li>
+                <li>[laughs]</li>
+                <li>[sighs]</li>
+                <li>[music]</li>
+                <li>[gasps]</li>
+                <li>[clears throat] — or ... for hesitations</li>
+                <li>♪ for song lyrics</li>
+                <li>CAPITALIZATION for emphasis of a word</li>
+                <li>[MAN] and [WOMAN] to bias Bark toward male and female speakers, respectively</li>
+            </ul>
+        </section>
+    </main>
+    
+</body>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.1.2/socket.io.js"></script>
+<!-- Add this script block to your HTML file -->
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        var progressSection = document.getElementById('progress-section');
+        var progressBar = document.getElementById('progress-bar');
+        var progressStatus = document.getElementById('progress-status');
+        var form = document.querySelector('form');
+
+        form.addEventListener('submit', function (e) {
+            e.preventDefault();
+
+            // Show the progress section
+            progressSection.style.display = 'block';
+
+            // Start polling for progress updates
+            var pollInterval = setInterval(function () {
+                // Perform a GET request to the /progress endpoint
+                var xhr = new XMLHttpRequest();
+                xhr.open('GET', '/progress', true);
+                xhr.onreadystatechange = function () {
+                    if (xhr.readyState == 4 && xhr.status == 200) {
+                        var data = JSON.parse(xhr.responseText);
+                        var currentProgress = data.progress;
+
+                        // Update the progress bar
+                        progressBar.value = currentProgress;
+                        progressStatus.textContent = currentProgress + '%';
+
+                        if (currentProgress === 100) {
+                            clearInterval(pollInterval);  // Stop polling when the conversion is complete
+                            progressSection.style.display = 'none';  // Hide progress section when complete
+                        }
+                    }
+                };
+                xhr.send();
+            }, 1000);  // Poll every 1 second
+
+            // Manually send an AJAX request instead of submitting the form
+            var xhr = new XMLHttpRequest();
+            xhr.open('POST', form.action, true);
+            xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded; charset=UTF-8');
+            xhr.send(new FormData(form));
+        });
+    });
+</script>
+
+
+
+</html>
